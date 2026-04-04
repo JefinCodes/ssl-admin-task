@@ -79,6 +79,71 @@ sudo suricata-update
 Restart
 sudo systemctl restart suricata
 
+##User and Permission Management
+
+Create exam users
+sudo adduser exam_1
+sudo adduser exam_2
+sudo adduser exam_3
+
+create admin user
+sudo adduser examadmin
+
+Add examadmin user to sudo group
+sudo usermod -aG sudo examadmin
+
+Create audit user
+sudo adduser examaudit
+
+Create a audit group
+sudo groupadd auditgroup
+
+Add examaudit user to auditgroup
+sudo usermod -aG auditgroup examaudit
+
+Add home directories of all exam users to auditgroup
+sudo chgrp auditgroup /home/exam_1
+sudo chgrp auditgroup /home/exam_2
+sudo chgrp auditgroup /home/exam_3
+
+what we are doing is we are adding home directories of all exam users to audit group where examaudit user is present. But we are no adding exam users to this group. So finally we set group permissions of home directories of exam users to read + execute. So examaudit user can read all exam users home directories
+
+sudo chmod 750 /home/exam_1
+sudo chmod 750 /home/exam_2
+sudo chmod 750 /home/exam_3
+
+Backup Script
+
+Create script file
+sudo nano /usr/local/bin/exam_backup.sh
+
+backup script
+#!/bin/bash
+BACKUP_DIR="/var/backups/exam_users"
+DATE=$(date +%F)
+mkdir -p $BACKUP_DIR
+tar -czf $BACKUP_DIR/exam_backup_$DATE.tar.gz /home/exam_*
+
+What the script does? creates backup directory if already not created. gets all home directories starting with exam_ and places it into a folder and compress that folder and save it with name exam_backup_$DATE.tar.gz
+
+set backup script file permissions
+sudo chown examadmin:examadmin /usr/local/bin/exam_backup.sh
+sudo chmod 700 /usr/local/bin/exam_backup.sh
+
+set backup directory permissions
+sudo mkdir -p /var/backups/exam_users
+sudo chown examadmin:examadmin /var/backups/exam_users
+sudo chmod 700 /var/backups/exam_users
+
+Schedule daily backup
+Edit cron:
+crontab -e
+Add cron task to run exam backup script at 2 AM daily
+0 2 * * * /usr/local/bin/exam_backup.sh
+
+
+
+
 
 
 
