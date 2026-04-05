@@ -276,9 +276,47 @@ Add:
 
 Runs daily at 3 AM
 
+##VPN Configuration
 
+Install WireGuard on client and server
+sudo apt install wireguard -y
 
+Create identity (keys) on client and server
+wg genkey | tee server_private.key | wg pubkey > server_public.key
+wg genkey | tee client_private.key | wg pubkey > client_public.key
 
+Create VPN network
+in server
+sudo nano /etc/wireguard/wg0.conf
+in client
+sudo nano /etc/wireguard/client1.conf
 
+Add:
+In server
+[Interface]
+Address = 10.0.0.1/24
+ListenPort = 51820
+PrivateKey = server private key
+[Peer]
+PublicKey = client public key
+AllowedIPs = 10.0.0.2/32
+In client
+[Interface]
+PrivateKey = client private key
+Address = 10.0.0.2/24
+[Peer]
+PublicKey = server public key
+Endpoint = vm_ip:51820
+AllowedIPs = 0.0.0.0/0
 
+Start VPN
+in server
+sudo wg-quick up wg0
+in client
+sudo wg-quick up client1
 
+allow vpn port 51820 in vm firewall as well in azure settings
+sudo ufw allow 51820/udp
+
+Test if vpn connection successful by pinging from client to server
+ping 10.0.0.1
