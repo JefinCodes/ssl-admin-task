@@ -141,11 +141,74 @@ crontab -e
 Add cron task to run exam backup script at 2 AM daily
 0 2 * * * /usr/local/bin/exam_backup.sh
 
+##Web Server Deployment and Secure Configuration
 
+Create Non-Privileged User
+sudo adduser appuser
 
+Install Nginx
+sudo apt update
+sudo apt install nginx -y
 
+Start
+sudo systemctl enable nginx
+sudo systemctl start nginx
 
+Switch user
+sudo su - appuser
 
+Download app and verify signature
+wget https://do.edvinbasil.com/ssl/app
+wget https://do.edvinbasil.com/ssl/app.sha256.sig
+
+Run app 1
+chmod +x app
+./app
+
+Run app 2
+git clone https://gitlab.com/tellmeY/issslopen.git
+cd issslopen
+bun install
+bun run index.ts
+
+This apps run on localhost and is only accessible inside vm
+
+Configure Nginx Reverse Proxy
+Edit config:
+sudo nano /etc/nginx/sites-available/default
+server {
+    listen 80;
+    server_name wibblenox.sslnitc.site;
+    location /server1/ {
+        proxy_pass http://127.0.0.1:8008/;
+    }
+    location /server2/ {
+        proxy_pass http://127.0.0.1:3000/;
+    }
+    location /sslopen {
+        proxy_pass http://127.0.0.1:3000/;
+    }
+}
+
+Restart Nginx
+sudo systemctl restart nginx
+
+Apps were publicly accessible
+app 2 is made only locally accessible by editing the index.ts
+but app 1 is found to be globally accessible when chacked using sudo ss -tulnp, but since firewall blocks every port except 22 80 443 there is no issue
+
+Enable HTTPS
+Install
+sudo apt install certbot python3-certbot-nginx -y
+Run
+sudo certbot --nginx
+
+Content Security Policy (CSP)
+Add CSP in Nginx
+Edit config:
+sudo nano /etc/nginx/sites-available/default
+Add inside server {}:
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self';";
 
 
 
