@@ -210,8 +210,71 @@ sudo nano /etc/nginx/sites-available/default
 Add inside server {}:
 add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self';";
 
+##Database Security
 
+Database Setup
+sudo apt update
+sudo apt install mariadb-server -y
 
+Start it:
+sudo systemctl enable mariadb
+sudo systemctl start mariadb
+
+Secure initial installation
+sudo mysql_secure_installation
+
+In the intial setup itself we can disable root login
+
+Login to MariaDB
+sudo mysql
+
+Create database
+CREATE DATABASE secure_onboarding;
+
+Create minimal-privilege user
+CREATE USER 'secure_user'@'localhost' IDENTIFIED BY '123';
+
+Grant limited permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON secure_onboarding.* TO 'secure_user'@'localhost';
+
+Apply changes
+FLUSH PRIVILEGES;
+EXIT;
+
+Restrict MariaDB to localhost ONLY
+Check current binding:
+sudo nano /etc/mysql/mariadb.conf.d/50-server.cnf
+Find:
+bind-address = 127.0.0.1
+So local access only
+
+automated backups
+
+backup directory
+sudo mkdir -p /var/backups/mariadb
+sudo chown jefincodes:jefincodes /var/backups/mariadb
+sudo chmod 700 /var/backups/mariadb
+
+Create backup script
+sudo nano /usr/local/bin/db_backup.sh
+
+Script:
+#!/bin/bash
+DATE=$(date +%F)
+BACKUP_DIR="/var/backups/mariadb"
+mysqldump -u root secure_onboarding > $BACKUP_DIR/db_$DATE.sql
+gzip $BACKUP_DIR/db_$DATE.sql
+
+Secure script
+sudo chmod 700 /usr/local/bin/db_backup.sh
+
+Schedule with cron
+sudo crontab -e
+
+Add:
+0 3 * * * /usr/local/bin/db_backup.sh
+
+Runs daily at 3 AM
 
 
 
