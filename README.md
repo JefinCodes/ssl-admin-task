@@ -1,6 +1,6 @@
 # 🔐 Secure Cloud VM Setup & Hardening (Azure Ubuntu 22.04)
 
-This project demonstrates the complete setup and security hardening of an Ubuntu 22.04 Virtual Machine on Azure, including firewall configuration, intrusion detection, secure user management, backups, web server deployment, database security, and VPN setup.
+This project demonstrates the complete setup and security hardening of an Ubuntu 22.04 Virtual Machine on Azure, including firewall configuration, intrusion detection, secure user management, backups, web server deployment, database security, VPN setup, Docker containerization, and Ansible automation.
 
 ---
 
@@ -401,6 +401,468 @@ ping 10.0.0.1
 
 ---
 
+## 🐳 Stage 8: Docker Containerization
+
+### Part 1: Basic Docker Setup
+
+#### 1️⃣ Install Docker
+```bash
+sudo apt update
+sudo apt install docker.io -y
+```
+> Installs Docker engine — allows you to run containers.
+
+#### 2️⃣ Start and Enable Docker
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker
+```
+> `start` → runs Docker now. `enable` → auto-starts Docker on every boot.
+
+#### 3️⃣ Add User to Docker Group
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+> Without this, every Docker command requires `sudo`. After adding to the group, you can run `docker run ...` directly without elevated privileges.
+
+#### 4️⃣ Test Docker
+```bash
+docker run hello-world
+```
+> Expected output: `Hello from Docker!` — confirms Docker is working correctly. ✅
+
+---
+
+### Part 2: Create Portfolio Website
+
+#### 1️⃣ Create Project Folder
+```bash
+mkdir ~/portfolio
+cd ~/portfolio
+```
+
+#### 2️⃣ Create the HTML Site
+```bash
+nano index.html
+```
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My Portfolio</title>
+</head>
+<body>
+    <h1>Welcome to My Portfolio</h1>
+    <p>This is running inside Docker 🚀</p>
+</body>
+</html>
+```
+> This is the website content that will be served from inside the container.
+
+---
+
+### Part 3: Containerize the Website
+
+#### 1️⃣ Create Dockerfile
+```bash
+nano Dockerfile
+```
+
+```dockerfile
+FROM nginx:latest
+COPY . /usr/share/nginx/html
+```
+
+| Line | Meaning |
+|------|---------|
+| `FROM nginx` | Use the official Nginx image as base |
+| `COPY` | Copy your site files into the container's web root |
+
+#### 2️⃣ Build the Image
+```bash
+docker build -t portfolio-site .
+```
+> Creates a custom Docker image named `portfolio-site` from the Dockerfile.
+
+#### 3️⃣ Run the Container
+```bash
+docker run -d -p 8080:80 --name portfolio portfolio-site
+```
+
+| Flag | Meaning |
+|------|---------|
+| `-d` | Run container in background (detached mode) |
+| `-p 8080:80` | Map host port 8080 to container port 80 |
+| `--name` | Assign a name to the container |
+
+#### 🧪 Test
+```bash
+curl http://localhost:8080
+```
+> Should return your HTML content.
+
+---
+
+### Part 4: Use a Volume
+
+Stop and remove the existing container first:
+```bash
+docker stop portfolio
+docker rm portfolio
+```
+
+Run with a bind mount volume:
+```bash
+docker run -d \
+  -p 8080:80 \
+  --name portfolio \
+  -v ~/portfolio:/usr/share/nginx/html \
+  nginx
+```
+> The volume maps your local `~/portfolio` folder directly into the container. Any edits to the HTML are instantly reflected without rebuilding the image. Data also persists even if the container is stopped.
+
+---
+
+### Part 5: Auto-start Container on Boot
+
+```bash
+docker run -d \
+  -p 8080:80 \
+  --name portfolio \
+  --restart always \
+  -v ~/portfolio:/usr/share/nginx/html \
+  nginx
+```
+> `--restart always` ensures the container automatically restarts whenever the VM reboots.
+
+---
+
+### Part 6: Reverse Proxy via Host Nginx
+
+Edit the Nginx config to forward traffic to the Docker container:
+```bash
+sudo nano /etc/nginx/sites-available/default
+```
+
+Add inside the `server` block:
+```nginx
+location /portfolio/ {
+    proxy_pass http://127.0.0.1:8080/;
+}
+```
+> This routes requests to `/portfolio/` on the public IP into the Docker container running on port 8080.
+
+Restart Nginx to apply changes:
+```bash
+sudo systemctl restart nginx
+```
+
+#### 🧪 Test
+Open in browser:
+```
+http://YOUR_IP/portfolio/
+```
+> Your portfolio website should appear.
+
+---
+
+### Part 7: Fix Permissions
+
+```bash
+chmod -R 755 ~/portfolio
+```
+> Ensures the Nginx process inside the container can read all files in the portfolio directory.
+
+---
+
+## 🤖 Stage 9: Ansible Automation
+
+### Part 1: Setup Ansible Lab
+
+#### 🔹 Step 1: Create Docker Network
+```bash
+docker network create ansible-net
+```
+> Creates an isolated network so containers can communicate with each other by name (e.g., `target1`, `target2`) instead of IP addresses.
+
+#### 🔹 Step 2: Create Target Containers (Simulated SSH Servers)
+
+Run target1:
+```bash
+docker run -dit --name target1 --network ansible-net ubuntu:22.04
+```
+
+Run target2:
+```bash
+docker run -dit --name target2 --network ansible-net ubuntu:22.04
+```
+> These containers simulate remote servers that Ansible will manage.
+
+#### 🔹 Step 3: Install SSH in Target Containers
+
+Enter the container:
+```bash
+docker exec -it target1 bash
+```
+
+Inside the container, run:
+```bash
+apt update
+apt install openssh-server -y
+mkdir /var/run/sshd
+echo 'root:root' | chpasswd
+```
+
+Edit SSH config to allow root and password login:
+```bash
+nano /etc/ssh/sshd_config
+```
+
+```
+PermitRootLogin yes
+PasswordAuthentication yes
+```
+
+Start the SSH daemon:
+```bash
+/usr/sbin/sshd
+```
+
+> Repeat the same steps for `target2`. SSH is required so Ansible can connect to and manage these containers.
+
+#### 🔹 Step 4: Create Control Container
+```bash
+docker run -dit --name control --network ansible-net ubuntu:22.04
+docker exec -it control bash
+```
+
+#### 🔹 Step 5: Install Ansible in Control Container
+```bash
+apt update
+apt install ansible openssh-client -y
+```
+> `ansible` provides the automation engine. `openssh-client` enables SSH connections to the target containers.
+
+#### 🔐 Step 6: Setup SSH Key Authentication
+
+Inside the control container, generate a key pair:
+```bash
+ssh-keygen
+```
+Press Enter for all prompts.
+
+Copy the public key to each target:
+```bash
+ssh-copy-id root@target1
+ssh-copy-id root@target2
+```
+(Password: `root`)
+
+> Key-based auth avoids password prompts during automated playbook runs.
+
+#### 🔹 Step 7: Create Inventory File
+```bash
+nano inventory.ini
+```
+
+```ini
+[targets]
+target1
+target2
+```
+> The inventory file tells Ansible which machines to manage.
+
+#### 🔹 Step 8: Test Ansible Connection
+```bash
+ansible -i inventory.ini targets -m ping
+```
+
+Expected output:
+```
+target1 | SUCCESS
+target2 | SUCCESS
+```
+
+#### 🔹 Step 9: Basic Playbook
+```bash
+nano test.yml
+```
+
+```yaml
+- hosts: targets
+  tasks:
+    - name: Ping
+      ping:
+
+    - name: Disk usage
+      command: df -h
+
+    - name: Uptime
+      command: uptime
+```
+
+Run the playbook:
+```bash
+ansible-playbook -i inventory.ini test.yml
+```
+> This confirms that Ansible can connect to both targets and execute tasks automatically.
+
+---
+
+### Part 2: Configuration Management
+
+#### 🔹 Step 1: Create Advanced Playbook
+```bash
+nano setup.yml
+```
+
+```yaml
+- hosts: targets
+  become: yes
+
+  vars:
+    packages:
+      - python3
+      - git
+      - vim
+      - htop
+      - curl
+      - wget
+      - tmux
+
+  tasks:
+
+    - name: Install packages
+      apt:
+        name: "{{ packages }}"
+        state: present
+        update_cache: yes
+
+    - name: Set bash alias
+      copy:
+        dest: /etc/profile.d/custom.sh
+        content: |
+          alias ll='ls -la'
+
+    - name: Configure vim
+      copy:
+        dest: /etc/vim/vimrc.local
+        content: |
+          set number
+
+    - name: Set permissions
+      file:
+        path: /home
+        mode: '755'
+```
+
+| Feature | Purpose |
+|---------|---------|
+| `vars` | Reusable values (package list) |
+| `tasks` | Actual work to be performed |
+| `copy` | Push configuration files to targets |
+
+#### 🔐 Add UFW Firewall & SSH Hardening
+
+Append to `setup.yml`:
+```yaml
+    - name: Install UFW
+      apt:
+        name: ufw
+        state: present
+
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        port: 22
+
+    - name: Enable firewall
+      ufw:
+        state: enabled
+```
+> Automates security configuration across all target machines in one run.
+
+---
+
+### Part 3: Ansible Roles
+
+#### 🔹 Step 1: Generate Role Scaffolding
+```bash
+ansible-galaxy init lab-base
+ansible-galaxy init student-workstation
+```
+
+#### 🔹 Role 1: lab-base
+
+Edit the tasks file:
+```bash
+nano lab-base/tasks/main.yml
+```
+
+```yaml
+- name: Update packages
+  apt:
+    update_cache: yes
+
+- name: Install monitoring tool
+  apt:
+    name: htop
+    state: present
+```
+> Sets up the base environment on all lab machines.
+
+#### 🔹 Role 2: student-workstation
+
+Edit the tasks file:
+```bash
+nano student-workstation/tasks/main.yml
+```
+
+```yaml
+- name: Create student user
+  user:
+    name: student
+    state: present
+
+- name: Install dev tools
+  apt:
+    name:
+      - git
+      - python3
+    state: present
+```
+> Simulates a developer/student lab environment with required tools and a user account.
+
+#### 🔹 Step 3: Apply Roles via Playbook
+```bash
+nano roles.yml
+```
+
+```yaml
+- hosts: targets
+  become: yes
+  roles:
+    - lab-base
+    - student-workstation
+```
+
+Run:
+```bash
+ansible-playbook -i inventory.ini roles.yml
+```
+
+#### 🧠 Idempotence
+
+Running the playbook multiple times is safe:
+```bash
+ansible-playbook -i inventory.ini roles.yml
+```
+> Ansible only makes changes when the current state differs from the desired state. Running the same playbook twice produces no unintended side effects — this is called **idempotence**.
+
+---
+
 ## 🎯 Summary
 
 This setup provides:
@@ -413,5 +875,7 @@ This setup provides:
 - Secure web hosting with HTTPS  
 - Local-only database access  
 - Private networking using WireGuard VPN  
+- Containerized web application using Docker  
+- Infrastructure automation using Ansible with roles and playbooks  
 
 ---
